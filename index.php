@@ -4,28 +4,63 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// Configuração de diretório e arquivo de denúncias
+// Configuração de diretório para armazenar vídeos
 $videoDir = "videos/";
-$reportsFile = "reports.json"; // Arquivo para armazenar denúncias (JSON)
+if (!is_dir($videoDir)) {
+    if (!mkdir($videoDir, 0777, true)) {
+        die("Erro ao criar o diretório de vídeos.");
+    }
+}
 
-// Carregar denúncias existentes ou criar arquivo
+// Função para gerar nomes de arquivos seguros
+function gerarNomeSeguro($nome) {
+    return preg_replace('/[^a-zA-Z0-9_\.-]/', '_', $nome);
+}
+
+// Configuração para armazenar denúncias
+$reportsFile = "reports.json";
 $reports = file_exists($reportsFile) ? json_decode(file_get_contents($reportsFile), true) : [];
 
-// Processar denúncia de vídeo
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['report_video'])) {
-    $videoName = $_POST['video_name'];
-    $reason = $_POST['reason'];
+// Verifica se um arquivo foi enviado
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_FILES['video'])) {
+        $video = $_FILES['video'];
+        $videoName = gerarNomeSeguro(basename($video['name']));
+        $targetPath = $videoDir . $videoName;
 
-    if (!empty($videoName) && !empty($reason)) {
-        $reports[] = [
-            'video' => $videoName,
-            'reason' => $reason,
-            'timestamp' => date('Y-m-d H:i:s') // Data e hora da denúncia
-        ];
-        file_put_contents($reportsFile, json_encode($reports, JSON_PRETTY_PRINT));
-        echo "<script>alert('Denúncia registrada com sucesso!');</script>";
-    } else {
-        echo "<script>alert('Por favor, preencha todos os campos da denúncia.');</script>";
+        // Verifica erros no upload
+        if ($video['error'] === UPLOAD_ERR_OK) {
+            $fileMimeType = mime_content_type($video['tmp_name']);
+            if (strpos($fileMimeType, 'video/') === 0) {
+                if (move_uploaded_file($video['tmp_name'], $targetPath)) {
+                    echo "<script>alert('Vídeo enviado com sucesso!');</script>";
+                } else {
+                    echo "<script>alert('Erro ao mover o arquivo para o diretório de destino.');</script>";
+                }
+            } else {
+                echo "<script>alert('Erro: O arquivo enviado não é um vídeo válido.');</script>";
+            }
+        } else {
+            echo "<script>alert('Erro ao enviar o vídeo.');</script>";
+        }
+    }
+
+    // Processa denúncia
+    if (isset($_POST['report_video'])) {
+        $videoName = $_POST['video_name'];
+        $reason = $_POST['reason'];
+
+        if (!empty($videoName) && !empty($reason)) {
+            $reports[] = [
+                'video' => $videoName,
+                'reason' => $reason,
+                'timestamp' => date('Y-m-d H:i:s')
+            ];
+            file_put_contents($reportsFile, json_encode($reports, JSON_PRETTY_PRINT));
+            echo "<script>alert('Denúncia registrada com sucesso!');</script>";
+        } else {
+            echo "<script>alert('Por favor, preencha todos os campos da denúncia.');</script>";
+        }
     }
 }
 
@@ -47,30 +82,14 @@ $videos = array_diff(scandir($videoDir), array('..', '.'));
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="index.php">VideoSite</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="index.php">Início</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#videos">Vídeos</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#about">Sobre</a>
-                    </li>
-                </ul>
-            </div>
         </div>
     </nav>
 
     <div class="container py-5">
+        <!-- Envio de Vídeos -->
         <div class="row">
             <div class="col-md-6 offset-md-3">
                 <h1 class="text-center mb-4">Envie seu Vídeo</h1>
-                <!-- Formulário de Envio -->
                 <form action="index.php" method="post" enctype="multipart/form-data" class="card p-4 shadow-sm">
                     <div class="mb-3">
                         <label for="video" class="form-label">Escolha um vídeo para enviar</label>
@@ -81,11 +100,10 @@ $videos = array_diff(scandir($videoDir), array('..', '.'));
             </div>
         </div>
 
-        <div class="row mt-5" id="videos">
+        <!-- Lista de Vídeos -->
+        <div class="row mt-5">
             <div class="col-12">
                 <h2 class="text-center mb-4">Vídeos Enviados</h2>
-
-                <!-- Lista de Vídeos -->
                 <?php if (!empty($videos)): ?>
                     <div class="row">
                         <?php foreach ($videos as $video): ?>
@@ -148,8 +166,8 @@ $videos = array_diff(scandir($videoDir), array('..', '.'));
         // Script para preencher o nome do vídeo no modal
         const reportModal = document.getElementById('reportModal');
         reportModal.addEventListener('show.bs.modal', function (event) {
-            const button = event.relatedTarget; // Botão que acionou o modal
-            const videoName = button.getAttribute('data-video'); // Nome do vídeo
+            const button = event.relatedTarget;
+            const videoName = button.getAttribute('data-video');
             const modalInput = reportModal.querySelector('#videoName');
             modalInput.value = videoName;
         });
